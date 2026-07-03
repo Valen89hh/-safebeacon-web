@@ -2,13 +2,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import NavBar from "@/components/NavBar";
-import { addContact, createDevice, deleteContact } from "./actions";
+import { addContact, createDevice, deleteContact, unlinkTelegram } from "./actions";
+
+const ALERT_URL = process.env.NEXT_PUBLIC_ALERT_SERVICE_URL;
 
 type Contact = {
   id: string;
   name: string;
   phone: string;
   relation: string | null;
+  telegram_chat_id: string | null;
 };
 
 type Device = {
@@ -18,9 +21,10 @@ type Device = {
 };
 
 type DeliveryEntry = {
+  channel?: "whatsapp" | "telegram";
   phone: string;
   ok: boolean;
-  status?: string; // acuse WhatsApp: enviado | entregado | leído
+  status?: string; // acuse: enviado | entregado | leído
   error?: string;
 };
 
@@ -100,8 +104,24 @@ export default async function DashboardPage() {
 
   const { data: contacts } = await supabase
     .from("emergency_contacts")
-    .select("id, name, phone, relation")
+    .select("id, name, phone, relation, telegram_chat_id")
     .order("created_at", { ascending: true });
+
+  // Info del bot de Telegram para armar los enlaces de vinculación por contacto.
+  let tgBot: { configured: boolean; username: string | null } = {
+    configured: false,
+    username: null,
+  };
+  if (ALERT_URL) {
+    try {
+      const r = await fetch(`${ALERT_URL}/api/telegram/info`, {
+        cache: "no-store",
+      });
+      if (r.ok) tgBot = await r.json();
+    } catch {
+      /* si el backend está dormido, se muestra sin Telegram */
+    }
+  }
 
   const { data: devices } = await supabase
     .from("devices")
@@ -283,31 +303,75 @@ export default async function DashboardPage() {
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-neutral-800">
-            {list.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <div>
-                  <p className="font-medium">{c.name}</p>
-                  <p className="text-sm text-neutral-400">
-                    {c.phone}
-                    {c.relation ? ` · ${c.relation}` : ""}
-                  </p>
-                </div>
-                <form action={deleteContact}>
-                  <input type="hidden" name="id" value={c.id} />
-                  <button
-                    type="submit"
-                    className="rounded-lg px-3 py-1.5 text-sm text-neutral-400 transition hover:bg-brand-red/10 hover:text-red-400"
-                    title="Eliminar"
-                  >
-                    Eliminar
-                  </button>
-                </form>
-              </li>
-            ))}
+            {list.map((c) => {
+              const tgLinked = !!c.telegram_chat_id;
+              const tgHref =
+                tgBot.username && !tgLinked
+                  ? `https://t.me/${tgBot.username}?start=${c.id}`
+                  : null;
+              return (
+                <li key={c.id} className="py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium">{c.name}</p>
+                      <p className="text-sm text-neutral-400">
+                        {c.phone}
+                        {c.relation ? ` · ${c.relation}` : ""}
+                      </p>
+                    </div>
+                    <form action={deleteContact}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <button
+                        type="submit"
+                        className="rounded-lg px-3 py-1.5 text-sm text-neutral-400 transition hover:bg-brand-red/10 hover:text-red-400"
+                        title="Eliminar"
+                      >
+                        Eliminar
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Vinculación Telegram (canal de respaldo) */}
+                  {tgBot.configured && (
+                    <div className="mt-2">
+                      {tgLinked ? (
+                        <span className="inline-flex items-center gap-2 rounded-full bg-sky-500/10 px-2.5 py-1 text-xs text-sky-400">
+                          <span>✈️ Telegram vinculado</span>
+                          <form action={unlinkTelegram} className="inline">
+                            <input type="hidden" name="id" value={c.id} />
+                            <button
+                              type="submit"
+                              className="text-sky-400/60 underline-offset-2 hover:text-sky-300 hover:underline"
+                              title="Desvincular Telegram"
+                            >
+                              desvincular
+                            </button>
+                          </form>
+                        </span>
+                      ) : tgHref ? (
+                        <a
+                          href={tgHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/30 bg-sky-500/5 px-2.5 py-1 text-xs text-sky-400 transition hover:bg-sky-500/10"
+                        >
+                          ✈️ Conectar Telegram (respaldo)
+                        </a>
+                      ) : null}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
+        )}
+        {tgBot.configured && list.length > 0 && (
+          <p className="mt-3 text-xs text-neutral-500">
+            💡 Telegram es un <b>canal de respaldo</b> más confiable que WhatsApp.
+            Comparte el enlace “Conectar Telegram” con cada contacto: al abrirlo y
+            pulsar <b>Iniciar</b>, quedará vinculado y recibirá también las alertas
+            por ahí.
+          </p>
         )}
       </section>
 
@@ -366,13 +430,14 @@ export default async function DashboardPage() {
                       const label = !d.ok
                         ? d.error ?? "falló"
                         : (d.status ?? "enviado");
+                      const canal = d.channel === "telegram" ? "✈️" : "🟢";
                       return (
                         <span
                           key={i}
                           className={`rounded-full px-2 py-0.5 text-xs ${cls}`}
-                          title={d.phone}
+                          title={`${d.channel === "telegram" ? "Telegram" : "WhatsApp"} · ${d.phone}`}
                         >
-                          {icon} {d.phone} · {label}
+                          {canal} {icon} {d.phone} · {label}
                         </span>
                       );
                     })

@@ -60,6 +60,25 @@ export async function deleteContact(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function unlinkTelegram(formData: FormData) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  // RLS asegura que solo pueda editar contactos propios
+  await supabase
+    .from("emergency_contacts")
+    .update({ telegram_chat_id: null })
+    .eq("id", id);
+
+  revalidatePath("/dashboard");
+}
+
 export async function createDevice() {
   const supabase = createClient();
   const {
