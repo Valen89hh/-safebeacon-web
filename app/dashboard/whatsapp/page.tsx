@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import NavBar from "@/components/NavBar";
 
 const ALERT_URL = process.env.NEXT_PUBLIC_ALERT_SERVICE_URL!;
 
@@ -88,14 +88,9 @@ export default function WhatsAppPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-xl px-6 py-10">
-      <Link
-        href="/dashboard"
-        className="mb-8 inline-block text-sm text-neutral-400 hover:text-neutral-200"
-      >
-        ← Volver al panel
-      </Link>
-
+    <>
+      <NavBar />
+      <main className="mx-auto min-h-screen w-full max-w-xl px-4 py-10 sm:px-6">
       <h1 className="mb-1 text-2xl font-bold">Vincular WhatsApp</h1>
       <p className="mb-6 text-neutral-400">
         Tus alertas se enviarán desde tu propio WhatsApp a tus contactos de
@@ -156,6 +151,7 @@ export default function WhatsAppPage() {
           </>
         )}
       </div>
-    </main>
+      </main>
+    </>
   );
 }

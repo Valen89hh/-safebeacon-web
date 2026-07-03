@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { addContact, createDevice, deleteContact, signOut } from "./actions";
+import NavBar from "@/components/NavBar";
+import { addContact, createDevice, deleteContact } from "./actions";
 
 type Contact = {
   id: string;
@@ -41,6 +42,47 @@ function fmtLima(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** Chip de estado del sistema: verde si está listo, neutro si falta. */
+function StatusChip({
+  ok,
+  label,
+  done,
+  pending,
+}: {
+  ok: boolean;
+  label: string;
+  done: string;
+  pending: string;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 ${
+        ok
+          ? "border-green-500/30 bg-green-500/5"
+          : "border-neutral-800 bg-neutral-900"
+      }`}
+    >
+      <span
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs ${
+          ok ? "bg-green-500/20 text-green-400" : "bg-neutral-800 text-neutral-500"
+        }`}
+      >
+        {ok ? "✓" : "•"}
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs text-neutral-500">{label}</p>
+        <p
+          className={`truncate text-sm font-medium ${
+            ok ? "text-neutral-100" : "text-neutral-400"
+          }`}
+        >
+          {ok ? done : pending}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export default async function DashboardPage() {
@@ -84,33 +126,60 @@ export default async function DashboardPage() {
   const displayName = profile?.full_name || user.email;
 
   const waConnected = waSession?.status === "connected";
+  const hasDevice = !!device;
+  const contactCount = list.length;
+  const hasContacts = contactCount > 0;
+  const ready = hasDevice && hasContacts && waConnected;
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-2xl px-6 py-10">
-      {/* Header */}
-      <header className="mb-10 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-red text-base">
-            🚨
-          </span>
-          <span className="text-lg font-bold">SafeBeacon</span>
-        </div>
-        <form action={signOut}>
-          <button className="btn-ghost" type="submit">
-            Cerrar sesión
-          </button>
-        </form>
-      </header>
-
-      <div className="mb-8">
+    <>
+      <NavBar />
+      <main className="mx-auto min-h-screen w-full max-w-4xl px-4 py-10 sm:px-6">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Hola, {displayName} 👋</h1>
         <p className="text-neutral-400">
-          Gestiona los contactos que recibirán tus alertas de emergencia.
+          Gestiona tu beacon y los contactos que reciben tus alertas.
         </p>
       </div>
 
+      {/* Estado del sistema */}
+      <section className="card mb-6">
+        <div className="mb-4 flex items-center gap-2">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${
+              ready ? "bg-green-400" : "bg-amber-400"
+            }`}
+          />
+          <h2 className="text-lg font-semibold">
+            {ready ? "Beacon listo" : "Termina de configurar tu beacon"}
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <StatusChip
+            ok={hasDevice}
+            label="Dispositivo"
+            done="Vinculado"
+            pending="Sin generar"
+          />
+          <StatusChip
+            ok={hasContacts}
+            label="Contactos"
+            done={`${contactCount} agregado${contactCount === 1 ? "" : "s"}`}
+            pending="Agrega uno"
+          />
+          <StatusChip
+            ok={waConnected}
+            label="WhatsApp"
+            done="Conectado"
+            pending="Sin vincular"
+          />
+        </div>
+      </section>
+
+      {/* Dispositivo + WhatsApp */}
+      <div className="mb-6 grid gap-6 lg:grid-cols-2">
       {/* Estado de conexión WhatsApp */}
-      <section className="card mb-6 flex items-center justify-between gap-4">
+      <section className="card flex flex-col justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold">Conexión WhatsApp</h2>
           <p className="mt-1 text-sm text-neutral-400">
@@ -132,7 +201,7 @@ export default async function DashboardPage() {
       </section>
 
       {/* Mi dispositivo */}
-      <section className="card mb-6">
+      <section className="card">
         <h2 className="mb-4 text-lg font-semibold">Mi dispositivo</h2>
         {device ? (
           <div className="space-y-3 text-sm">
@@ -167,6 +236,7 @@ export default async function DashboardPage() {
           </form>
         )}
       </section>
+      </div>
 
       {/* Agregar contacto */}
       <section className="card mb-6">
@@ -313,6 +383,7 @@ export default async function DashboardPage() {
           </ul>
         )}
       </section>
-    </main>
+      </main>
+    </>
   );
 }
