@@ -16,6 +16,33 @@ type Device = {
   name: string | null;
 };
 
+type DeliveryEntry = {
+  phone: string;
+  ok: boolean;
+  status?: string; // acuse WhatsApp: enviado | entregado | leído
+  error?: string;
+};
+
+type Alert = {
+  id: string;
+  created_at: string;
+  lat: number;
+  lng: number;
+  battery_pct: number | null;
+  delivery: DeliveryEntry[] | null;
+};
+
+/** Fecha/hora legible en zona horaria de Lima. */
+function fmtLima(iso: string): string {
+  return new Date(iso).toLocaleString("es-PE", {
+    timeZone: "America/Lima",
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default async function DashboardPage() {
   const supabase = createClient();
   const {
@@ -45,7 +72,14 @@ export default async function DashboardPage() {
     .eq("user_id", user.id)
     .maybeSingle();
 
+  const { data: alerts } = await supabase
+    .from("alerts")
+    .select("id, created_at, lat, lng, battery_pct, delivery")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
   const list = (contacts ?? []) as Contact[];
+  const alertList = (alerts ?? []) as Alert[];
   const device = (devices ?? [])[0] as Device | undefined;
   const displayName = profile?.full_name || user.email;
 
@@ -201,6 +235,79 @@ export default async function DashboardPage() {
                     Eliminar
                   </button>
                 </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Mis últimas alertas */}
+      <section className="card mt-6">
+        <h2 className="mb-4 text-lg font-semibold">
+          Mis últimas alertas{" "}
+          <span className="text-sm font-normal text-neutral-500">
+            ({alertList.length})
+          </span>
+        </h2>
+
+        {alertList.length === 0 ? (
+          <p className="py-6 text-center text-sm text-neutral-500">
+            Aún no has disparado ninguna alerta. Al presionar el botón aparecerá
+            aquí, con el estado de entrega a cada contacto.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-neutral-800">
+            {alertList.map((a) => (
+              <li key={a.id} className="py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">{fmtLima(a.created_at)}</p>
+                  <a
+                    href={`https://www.google.com/maps?q=${a.lat},${a.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-brand-red hover:underline"
+                  >
+                    📍 Ver ubicación
+                  </a>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {a.delivery === null ? (
+                    <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">
+                      Sin enviar · WhatsApp no estaba conectado
+                    </span>
+                  ) : (
+                    a.delivery.map((d, i) => {
+                      const leido = d.status === "leído" || d.status === "reproducido";
+                      const entregado = d.status === "entregado";
+                      const cls = !d.ok
+                        ? "bg-brand-red/10 text-red-400"
+                        : leido
+                          ? "bg-sky-500/10 text-sky-400"
+                          : entregado
+                            ? "bg-green-500/10 text-green-400"
+                            : "bg-neutral-800 text-neutral-300";
+                      const icon = !d.ok
+                        ? "✕"
+                        : leido
+                          ? "👁"
+                          : entregado
+                            ? "✓✓"
+                            : "✓";
+                      const label = !d.ok
+                        ? d.error ?? "falló"
+                        : (d.status ?? "enviado");
+                      return (
+                        <span
+                          key={i}
+                          className={`rounded-full px-2 py-0.5 text-xs ${cls}`}
+                          title={d.phone}
+                        >
+                          {icon} {d.phone} · {label}
+                        </span>
+                      );
+                    })
+                  )}
+                </div>
               </li>
             ))}
           </ul>

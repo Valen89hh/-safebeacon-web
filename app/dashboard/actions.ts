@@ -4,9 +4,18 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-/** Normaliza un número a solo dígitos (ej. "+51 987-654-321" -> "51987654321"). */
+/**
+ * Normaliza un número a formato internacional solo-dígitos.
+ * Ej: "+51 987-654-321" -> "51987654321".
+ * Si es un móvil peruano de 9 dígitos (empieza con 9), le antepone el
+ * código de país 51 automáticamente (evita el error de guardar "950146898"
+ * sin código de país, que hace fallar el envío por WhatsApp).
+ */
 function normalizePhone(raw: string): string {
-  return raw.replace(/\D/g, "");
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2); // prefijo internacional 00
+  if (digits.length === 9 && digits.startsWith("9")) digits = "51" + digits;
+  return digits;
 }
 
 export async function addContact(formData: FormData) {
